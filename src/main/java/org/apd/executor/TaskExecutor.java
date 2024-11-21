@@ -1,5 +1,6 @@
 package org.apd.executor;
 
+import org.apd.implementation.ThreadPool;
 import org.apd.storage.EntryResult;
 import org.apd.storage.SharedDatabase;
 
@@ -14,9 +15,14 @@ public class TaskExecutor {
         sharedDatabase = new SharedDatabase(storageSize, blockSize, readDuration, writeDuration);
     }
 
-    public List<EntryResult> ExecuteWork(int numberOfThreads, List<StorageTask> tasks, LockType lockType) {
+    public List<EntryResult> ExecuteWork(int numberOfThreads, List<StorageTask> tasks, LockType lockType)
+            throws InterruptedException {
         /* IMPLEMENT HERE THE THREAD POOL, ASSIGN THE TASKS AND RETURN THE RESULTS */
-        return new ArrayList<>();
+        //  Create thread pool
+        ThreadPool threadPool = new ThreadPool(numberOfThreads, tasks, sharedDatabase);
+
+        //  Return results
+        return threadPool.execute(lockType);
     }
 
     public List<EntryResult> ExecuteWorkSerial(List<StorageTask> tasks) {
