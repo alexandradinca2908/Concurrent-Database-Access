@@ -4,22 +4,20 @@ import org.apd.executor.StorageTask;
 import org.apd.storage.EntryResult;
 import org.apd.storage.SharedDatabase;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Semaphore;
 
 public abstract class ReadWriteThread implements Runnable {
 	private BlockingQueue<StorageTask> tasks;
 	protected final SharedDatabase sharedDatabase;
-	protected List<EntryResult> entryResults;
-	protected Semaphore finishedExecutionSemaphore;
+	protected BlockingQueue<EntryResult> entryResults;
 
 	ReadWriteThread(BlockingQueue<StorageTask> tasks, SharedDatabase sharedDatabase,
-					List<EntryResult> entryResults, Semaphore finishedExecutionSemaphore) {
+					BlockingQueue<EntryResult> entryResults) {
 		this.tasks = tasks;
 		this.sharedDatabase = sharedDatabase;
 		this.entryResults = entryResults;
-		this.finishedExecutionSemaphore = finishedExecutionSemaphore;
 	}
 
 	@Override
@@ -27,9 +25,8 @@ public abstract class ReadWriteThread implements Runnable {
 		while (!tasks.isEmpty()) {
 			//  Take a task
 			StorageTask task = tasks.poll();
-
+			//System.out.println(tasks.size());
 			//  Finish execution if there's nothing left
-			//  Release semaphore to alert the main thread
 			if (task == null) {
 				break;
 			}
@@ -38,6 +35,7 @@ public abstract class ReadWriteThread implements Runnable {
 			if (task.isWrite()) {
 				try {
 					writer(task);
+					System.out.println("done writing");
 				} catch (InterruptedException e) {
 					throw new RuntimeException(e);
 				}
@@ -45,15 +43,16 @@ public abstract class ReadWriteThread implements Runnable {
 			} else {
 				try {
 					reader(task);
+					System.out.println("done reading");
 				} catch (InterruptedException e) {
 					throw new RuntimeException(e);
 				}
 			}
 		}
 
-		//  Finish execution
-		finishedExecutionSemaphore.release();
-		System.out.println("Gata boss: " + finishedExecutionSemaphore.availablePermits());
+		//  Finish execution; release semaphore to alert the main thread
+		ThreadPool.finishedExecutionSemaphore.release();
+		System.out.println("Gata boss");
 	}
 
 	public abstract void reader(StorageTask task) throws InterruptedException;

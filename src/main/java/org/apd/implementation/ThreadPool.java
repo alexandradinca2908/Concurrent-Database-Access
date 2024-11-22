@@ -16,16 +16,16 @@ public class ThreadPool {
 	private final Thread[] threads;
 	private BlockingQueue<StorageTask> tasks;
 	private final SharedDatabase sharedDatabase;
-	private List<EntryResult> entryResults;
-	private final Semaphore finishedExecutionSemaphore;
+	private BlockingQueue<EntryResult> entryResults;
+	protected static Semaphore finishedExecutionSemaphore = null;
 
 	public ThreadPool(int numThreads, List<StorageTask> tasks, SharedDatabase sharedDatabase) {
 		this.numThreads = numThreads;
 		this.threads = new Thread[numThreads];
 		this.tasks = new LinkedBlockingQueue<>(tasks);
 		this.sharedDatabase = sharedDatabase;
-		this.entryResults = new ArrayList<>();
-		this.finishedExecutionSemaphore = new Semaphore(-numThreads + 2);
+		this.entryResults = new LinkedBlockingQueue<>();
+		finishedExecutionSemaphore = new Semaphore(3 - numThreads);
 	}
 
 	public List<EntryResult> execute(LockType lockType) throws InterruptedException {
@@ -41,7 +41,7 @@ public class ThreadPool {
 			switch (lockType) {
 				case LockType.ReaderPreferred ->
 						threads[i] = new Thread(new ReadPriorityThread(tasks, sharedDatabase,
-								entryResults, finishedExecutionSemaphore));
+								entryResults));
 //				case LockType.WriterPreferred1 -> {
 //					return new ArrayList<>();
 //				}
@@ -57,8 +57,8 @@ public class ThreadPool {
 		}
 
 		//  Return result when all tasks are done
-		System.out.println("pana aici am dus");
 		finishedExecutionSemaphore.acquire();
-		return entryResults;
+
+		return entryResults.stream().toList();
 	}
 }

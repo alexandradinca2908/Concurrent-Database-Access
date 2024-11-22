@@ -9,21 +9,19 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Semaphore;
 
 public class ReadPriorityThread extends ReadWriteThread {
-	static int readers;
-	Semaphore readWrite;
+	private static int readers = 0;
+	private static final Semaphore readWrite = new Semaphore(1);
 
 	ReadPriorityThread(BlockingQueue<StorageTask> tasks, SharedDatabase sharedDatabase,
-					   List<EntryResult> entryResults, Semaphore finishedExecutionSemaphore) {
-		super(tasks, sharedDatabase, entryResults, finishedExecutionSemaphore);
-		readers = 0;
-		readWrite = new Semaphore(1);
+					   BlockingQueue<EntryResult> entryResults) {
+		super(tasks, sharedDatabase, entryResults);
 	}
 
 	@Override
 	public void reader(StorageTask task) throws InterruptedException {
 		//  Increase the number of readers
 		synchronized (ReadPriorityThread.class) {
-			readers = readers + 1;
+			readers++;
 
 			//  First reader acquires memory so that writers can't enter
 			if (readers == 1) {
@@ -32,13 +30,11 @@ public class ReadPriorityThread extends ReadWriteThread {
 		}
 
 		//  Read from database
-		synchronized (this) {
-			entryResults.add(sharedDatabase.getData(task.index()));
-		}
+		entryResults.add(sharedDatabase.getData(task.index()));
 
 		//  Finish reading process
 		synchronized (ReadPriorityThread.class) {
-			readers = readers - 1;
+			readers--;
 
 			//  Last reader releases memory for writers to enter
 			if (readers == 0) {
@@ -54,9 +50,7 @@ public class ReadPriorityThread extends ReadWriteThread {
 		readWrite.acquire();
 
 		//  Write in database
-		synchronized (this) {
-			entryResults.add(sharedDatabase.getData(task.index()));
-		}
+		entryResults.add(sharedDatabase.addData(task.index(), task.data()));
 
 		//  Writer releases memory for others to enter
 		readWrite.release();
