@@ -1,58 +1,93 @@
 package org.apd.implementation;
 
 import org.apd.executor.StorageTask;
-import org.apd.storage.EntryResult;
-import org.apd.storage.SharedDatabase;
 
-import java.util.List;
-import java.util.concurrent.BlockingQueue;
+import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
 
 public class ReadPriorityThread extends ReadWriteThread {
-	private static int readers = 0;
-	private static final Semaphore readWrite = new Semaphore(1);
+	private static ArrayList<Integer> readers = null;
+	private static ArrayList<Object> readersMutex = null;
+	private static ArrayList<Semaphore> readWrite = null;
 
-	ReadPriorityThread(BlockingQueue<StorageTask> tasks, SharedDatabase sharedDatabase,
-					   BlockingQueue<EntryResult> entryResults) {
-		super(tasks, sharedDatabase, entryResults);
+	ReadPriorityThread(ThreadPool threadPool) {
+		super(threadPool);
+
+		if (readers == null) {
+			System.out.println("sync");
+			initSynchronizations();
+		}
+	}
+
+	private void initSynchronizations() {
+		readers = new ArrayList<>();
+		readersMutex = new ArrayList<>();
+		readWrite = new ArrayList<>();
+
+		for (int i = 0; i < this.threadPool.sharedDatabase.getSize(); i++) {
+			readers.add(0);
+			readersMutex.add(new Object());
+			readWrite.add(new Semaphore(1));
+		}
+
+		System.out.println("DB Size: " + this.threadPool.sharedDatabase.getSize() + "\n" +
+				"readWrite Size: " + readWrite.size() + "\n");
 	}
 
 	@Override
 	public void reader(StorageTask task) throws InterruptedException {
-		//  Increase the number of readers
-		synchronized (ReadPriorityThread.class) {
-			readers++;
+		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
+			//  Increase the number of readers
+			synchronized (readersMutex.get(task.index())) {
+				int nrReaders = readers.get(task.index());
+				readers.set(task.index(), ++nrReaders);
 
-			//  First reader acquires memory so that writers can't enter
-			if (readers == 1) {
-				readWrite.acquire();
+				//  First reader acquires memory so that writers can't enter this cell
+				if (nrReaders == 1) {
+					readWrite.get(task.index()).acquire();
+				}
 			}
-		}
 
-		//  Read from database
-		entryResults.add(sharedDatabase.getData(task.index()));
+			//  Read from database
+			if (task.index() < this.threadPool.sharedDatabase.getSize()) {
+				this.threadPool.entryResults.add(this.threadPool.sharedDatabase.getData(task.index()));
+			}
 
-		//  Finish reading process
-		synchronized (ReadPriorityThread.class) {
-			readers--;
+			//  Finish reading process
+			synchronized (readersMutex.get(task.index())) {
+				int nrReaders = readers.get(task.index());
+				readers.set(task.index(), --nrReaders);
 
-			//  Last reader releases memory for writers to enter
-			if (readers == 0) {
-				readWrite.release();
+				//  First reader acquires memory so that writers can't enter
+				if (nrReaders == 0) {
+					readWrite.get(task.index()).release();
+				}
 			}
 		}
 	}
 
 	@Override
 	public void writer(StorageTask task) throws InterruptedException {
-		//  Enter database
-		//  Only one writer at a time can enter
-		readWrite.acquire();
+		System.out.println("Task index: " + task.index() + "\n" +
+		"DB Size: " + this.threadPool.sharedDatabase.getSize() + "\n" +
+		"readWrite Size: " + readWrite.size() + "\n");
+		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
+			//  Enter database
+			//  Only one writer at a time can enter a cell
+			readWrite.get(task.index()).acquire();
 
-		//  Write in database
-		entryResults.add(sharedDatabase.addData(task.index(), task.data()));
+			//  Write in database
+			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.addData(task.index(), task.data()));
 
-		//  Writer releases memory for others to enter
-		readWrite.release();
+			//  Writer releases memory for others to enter
+			readWrite.get(task.index()).release();
+		}
+	}
+
+	@Override
+	public void releaseMemory() {
+		readers = null;
+		readersMutex = null;
+		readWrite = null;
 	}
 }
