@@ -14,12 +14,12 @@ public class ReadPriorityThread extends ReadWriteThread {
 		super(threadPool);
 
 		if (readers == null) {
-			System.out.println("sync");
 			initSynchronizations();
 		}
 	}
 
-	private void initSynchronizations() {
+	@Override
+	public void initSynchronizations() {
 		readers = new ArrayList<>();
 		readersMutex = new ArrayList<>();
 		readWrite = new ArrayList<>();
@@ -29,9 +29,6 @@ public class ReadPriorityThread extends ReadWriteThread {
 			readersMutex.add(new Object());
 			readWrite.add(new Semaphore(1));
 		}
-
-		System.out.println("DB Size: " + this.threadPool.sharedDatabase.getSize() + "\n" +
-				"readWrite Size: " + readWrite.size() + "\n");
 	}
 
 	@Override
@@ -49,9 +46,7 @@ public class ReadPriorityThread extends ReadWriteThread {
 			}
 
 			//  Read from database
-			if (task.index() < this.threadPool.sharedDatabase.getSize()) {
-				this.threadPool.entryResults.add(this.threadPool.sharedDatabase.getData(task.index()));
-			}
+			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.getData(task.index()));
 
 			//  Finish reading process
 			synchronized (readersMutex.get(task.index())) {
@@ -68,9 +63,6 @@ public class ReadPriorityThread extends ReadWriteThread {
 
 	@Override
 	public void writer(StorageTask task) throws InterruptedException {
-		System.out.println("Task index: " + task.index() + "\n" +
-		"DB Size: " + this.threadPool.sharedDatabase.getSize() + "\n" +
-		"readWrite Size: " + readWrite.size() + "\n");
 		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
 			//  Enter database
 			//  Only one writer at a time can enter a cell

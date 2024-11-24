@@ -50,12 +50,11 @@ public class ThreadPool {
 			switch (lockType) {
 				case LockType.ReaderPreferred ->
 						threads[i] = new Thread(new ReadPriorityThread(this));
-//				case LockType.WriterPreferred1 -> {
-//					return new ArrayList<>();
-//				}
-//				case LockType.WriterPreferred2 -> {
-//					return;
-//				}
+				case LockType.WriterPreferred1 ->
+						threads[i] = new Thread(new WritePriority1Thread(this));
+
+//				case LockType.WriterPreferred2 ->
+				
 				default -> {
 					return new ArrayList<>();
 				}

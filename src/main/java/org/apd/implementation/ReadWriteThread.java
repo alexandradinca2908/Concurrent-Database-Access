@@ -43,6 +43,8 @@ public abstract class ReadWriteThread implements Runnable {
 		}
 	}
 
+	public abstract void initSynchronizations();
+
 	public abstract void reader(StorageTask task) throws InterruptedException;
 
 	public abstract void writer(StorageTask task) throws InterruptedException;
