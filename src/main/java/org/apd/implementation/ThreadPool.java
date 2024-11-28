@@ -2,68 +2,62 @@ package org.apd.implementation;
 
 import org.apd.executor.LockType;
 import org.apd.executor.StorageTask;
+import org.apd.implementation.threads.ReadPriorityThread;
+import org.apd.implementation.threads.WritePriorityThread;
 import org.apd.storage.EntryResult;
 import org.apd.storage.SharedDatabase;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ThreadPool {
-	final int numThreads;
-	final Thread[] threads;
-	BlockingQueue<EntryResult> entryResults;
-	BlockingQueue<StorageTask> tasks;
-	SharedDatabase sharedDatabase;
-	AtomicInteger threadsDone;
-	ArrayList<Semaphore> dbCellsSemaphores = new ArrayList<>();
+	public final int numThreads;
+	public final Thread[] threads;
+	public BlockingQueue<EntryResult> entryResults;
+	public final BlockingQueue<StorageTask> tasks;
+	public SharedDatabase sharedDatabase;
+	public AtomicInteger threadsDone;
+	public AtomicBoolean allTasksSet;
 
-	public ThreadPool(int numThreads, List<StorageTask> tasks,
-					  SharedDatabase sharedDatabase) {
+	public ThreadPool(int numThreads, SharedDatabase sharedDatabase,
+					  LockType lockType) {
 		this.numThreads = numThreads;
 		this.threads = new Thread[numThreads];
 		this.entryResults = new LinkedBlockingQueue<>();
-		this.tasks = new LinkedBlockingQueue<>(tasks);
+		this.tasks = new LinkedBlockingQueue<>();
 		this.sharedDatabase = sharedDatabase;
 		this.threadsDone = new AtomicInteger(0);
+		this.allTasksSet = new AtomicBoolean(false);
 
-		//  Set a semaphore for every database cell (index)
-		this.dbCellsSemaphores = new ArrayList<>();
-		for (int i = 0; i < sharedDatabase.getSize(); i++) {
-			dbCellsSemaphores.add(new Semaphore(1));
-		}
-	}
-
-	public List<EntryResult> execute(LockType lockType) throws InterruptedException {
-		//  Thread pool must be initialized
-		//  Thread pool must also have at least one thread
-		if (this.threads.length == 0) {
-			System.out.println("Thread pool not initialized properly!");
-			return new ArrayList<>();
-		}
-
-		//  Create threads and let them execute
+		//  Create threads and let them run
 		for (int i = 0; i < this.numThreads; i++) {
-			switch (lockType) {
-				case LockType.ReaderPreferred ->
-						threads[i] = new Thread(new ReadPriorityThread(this));
-				case LockType.WriterPreferred1 ->
-						threads[i] = new Thread(new WritePriority1Thread(this));
-
-//				case LockType.WriterPreferred2 ->
-				
-				default -> {
-					return new ArrayList<>();
-				}
+			if (lockType == LockType.ReaderPreferred) {
+				threads[i] = new Thread(new ReadPriorityThread(this));
+			} else {
+				threads[i] = new Thread(new WritePriorityThread(this, lockType));
 			}
 
 			this.threads[i].start();
 		}
+	}
 
-		//  Return result when all tasks are done
+	public List<EntryResult> execute(List<StorageTask> tasks) throws InterruptedException {
+		//  Add tasks one by one, simulating a real-time application
+		for (StorageTask task: tasks) {
+			this.tasks.add(task);
+		}
+
+		//  Let threads know they can stop running after they are done
+		//  Insert a "poison pill" for each thread, so they terminate gracefully
+		StorageTask poisonPill = new StorageTask(-1, "poisonPill");
+		for (Thread ignored : this.threads) {
+			this.tasks.put(poisonPill);
+		}
+
+		//  Return result after all tasks are done
 		for (Thread thread : this.threads) {
 			if (thread != null) {
 				thread.join();

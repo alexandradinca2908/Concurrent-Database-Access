@@ -19,10 +19,17 @@ public class TaskExecutor {
             throws InterruptedException {
         /* IMPLEMENT HERE THE THREAD POOL, ASSIGN THE TASKS AND RETURN THE RESULTS */
         //  Create thread pool
-        ThreadPool threadPool = new ThreadPool(numberOfThreads, tasks, sharedDatabase);
+        ThreadPool threadPool = new ThreadPool(numberOfThreads, sharedDatabase, lockType);
+
+        //  Thread pool must be initialized
+        //  Thread pool must also have at least one thread
+        if (threadPool.threads.length == 0) {
+            System.out.println("Thread pool not initialized properly!");
+            return new ArrayList<>();
+        }
 
         //  Return results
-        return threadPool.execute(lockType);
+        return threadPool.execute(tasks);
     }
 
     public List<EntryResult> ExecuteWorkSerial(List<StorageTask> tasks) {

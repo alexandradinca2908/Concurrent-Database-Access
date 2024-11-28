@@ -1,6 +1,7 @@
-package org.apd.implementation;
+package org.apd.implementation.threads;
 
 import org.apd.executor.StorageTask;
+import org.apd.implementation.ThreadPool;
 
 import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
@@ -10,7 +11,7 @@ public class ReadPriorityThread extends ReadWriteThread {
 	private static ArrayList<Object> readersMutex = null;
 	private static ArrayList<Semaphore> readWrite = null;
 
-	ReadPriorityThread(ThreadPool threadPool) {
+	public ReadPriorityThread(ThreadPool threadPool) {
 		super(threadPool);
 
 		if (readers == null) {
