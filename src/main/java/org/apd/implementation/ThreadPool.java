@@ -4,6 +4,7 @@ import org.apd.executor.LockType;
 import org.apd.executor.StorageTask;
 import org.apd.implementation.threads.ReadPriorityThread;
 import org.apd.implementation.threads.WritePriorityThread;
+import org.apd.implementation.threads.separatewriters.WritePriority2Thread;
 import org.apd.storage.EntryResult;
 import org.apd.storage.SharedDatabase;
 
@@ -36,8 +37,8 @@ public class ThreadPool {
 		for (int i = 0; i < this.numThreads; i++) {
 			if (lockType == LockType.ReaderPreferred) {
 				threads[i] = new Thread(new ReadPriorityThread(this));
-			} else {
-				threads[i] = new Thread(new WritePriorityThread(this, lockType));
+			} else if (lockType == LockType.WriterPreferred2){
+				threads[i] = new Thread(new WritePriority2Thread(this));
 			}
 
 			this.threads[i].start();

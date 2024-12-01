@@ -6,6 +6,7 @@ import org.apd.implementation.threads.ReadWriteThread;
 
 import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class WritePriority2Thread extends ReadWriteThread {
 	private static ArrayList<Integer> readers = null;
@@ -14,7 +15,8 @@ public class WritePriority2Thread extends ReadWriteThread {
 	private static ArrayList<Integer> waitingWriters = null;
 	private static ArrayList<Object> readerWaitingQueue = null;
 	private static ArrayList<Object> writerWaitingQueue = null;
-	private static ArrayList<Semaphore> enter = null;
+	private static ArrayList<AtomicInteger> enterAllowed = null;
+	private static ArrayList<Object> enter = null;
 
 	public WritePriority2Thread(ThreadPool threadPool) {
 		super(threadPool);
@@ -32,6 +34,7 @@ public class WritePriority2Thread extends ReadWriteThread {
 		waitingWriters = new ArrayList<>();
 		readerWaitingQueue = new ArrayList<>();
 		writerWaitingQueue = new ArrayList<>();
+		enterAllowed = new ArrayList<>();
 		enter = new ArrayList<>();
 
 		for (int i = 0; i < this.threadPool.sharedDatabase.getSize(); i++) {
@@ -41,7 +44,8 @@ public class WritePriority2Thread extends ReadWriteThread {
 			waitingWriters.add(0);
 			readerWaitingQueue.add(new Object());
 			writerWaitingQueue.add(new Object());
-			enter.add(new Semaphore(1));
+			enterAllowed.add(new AtomicInteger(1));
+			enter.add(new Object());
 		}
 	}
 
@@ -50,15 +54,27 @@ public class WritePriority2Thread extends ReadWriteThread {
 		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
 			int index = task.index();
 
-			enter.get(index).acquire();
+			//  Acquire
+			Object lock = enter.get(index);
+			if (enterAllowed.get(index).getAndDecrement() < 1) {
+				synchronized (lock) {
+					lock.wait();
+				}
+			}
 
 			//  Reader waits if writer is in memory area or waits for it
 			if (writers.get(index) > 0 || waitingWriters.get(index) > 0) {
 				waitingReaders.set(index, waitingReaders.get(index) + 1);
-				enter.get(index).release();
+
+				//  Release
+				enterAllowed.get(index).incrementAndGet();
+				lock = enter.get(index);
+				synchronized (lock) {
+					lock.notify();
+				}
 
 				//  Acquire monitor and enter waiting state
-				Object lock = readerWaitingQueue.get(index);
+				lock = readerWaitingQueue.get(index);
 				synchronized (lock) {
 					lock.wait();
 				}
@@ -71,22 +87,32 @@ public class WritePriority2Thread extends ReadWriteThread {
 				waitingReaders.set(index, waitingReaders.get(index) - 1);
 
 				//  Acquire monitor and release another reader
-				Object lock = readerWaitingQueue.get(index);
+				lock = readerWaitingQueue.get(index);
 				synchronized (lock) {
 					lock.notify();
 				}
 
-
 			//  No need to wait as thread is the first in queue
 			} else if (waitingReaders.get(index) == 0) {
-				enter.get(index).release();
+				//  Release
+				enterAllowed.get(index).incrementAndGet();
+				lock = enter.get(index);
+				synchronized (lock) {
+					lock.notify();
+				}
 			}
 
 			//  Read data
 			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.getData(index));
 
 			//  Secure critical area
-			enter.get(index).acquire();
+			//  Acquire
+			lock = enter.get(index);
+			if (enterAllowed.get(index).getAndDecrement() < 1) {
+				synchronized (lock) {
+					lock.wait();
+				}
+			}
 			readers.set(index, readers.get(index) - 1);
 
 			//  Allow writer to enter if thread is the last EXECUTING reader
@@ -94,14 +120,19 @@ public class WritePriority2Thread extends ReadWriteThread {
 				waitingWriters.set(index, waitingWriters.get(index) - 1);
 
 				//  Acquire monitor and release a random writer
-				Object lock = writerWaitingQueue.get(index);
+				lock = writerWaitingQueue.get(index);
 				synchronized (lock) {
 					lock.notify();
 				}
 
 				//  Or simply release critical area semaphore for WAITING readers
 			} else if (readers.get(index) > 0 || waitingWriters.get(index) == 0) {
-				enter.get(index).release();
+				//  Release
+				enterAllowed.get(index).incrementAndGet();
+				lock = enter.get(index);
+				synchronized (lock) {
+					lock.notify();
+				}
 			}
 		}
 	}
@@ -111,15 +142,27 @@ public class WritePriority2Thread extends ReadWriteThread {
 		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
 			int index = task.index();
 
-			enter.get(index).acquire();
+			//  Acquire
+			Object lock = enter.get(index);
+			if (enterAllowed.get(index).getAndDecrement() < 1) {
+				synchronized (lock) {
+					lock.wait();
+				}
+			}
 
 			//  Writer waits if readers or writers are in memory area
 			if (readers.get(index) > 0 || writers.get(index) > 0) {
 				waitingWriters.set(index, waitingWriters.get(index) + 1);
-				enter.get(index).release();
+
+				//  Release
+				enterAllowed.get(index).incrementAndGet();
+				lock = enter.get(index);
+				synchronized (lock) {
+					lock.notify();
+				}
 
 				//  Acquire monitor and enter waiting state
-				Object lock = writerWaitingQueue.get(index);
+				lock = writerWaitingQueue.get(index);
 				synchronized (lock) {
 					writerWaitingQueue.get(index).wait();
 				}
@@ -128,13 +171,24 @@ public class WritePriority2Thread extends ReadWriteThread {
 
 			writers.set(index, writers.get(index) + 1);
 
-			enter.get(index).release();
+			//  Release
+			enterAllowed.get(index).incrementAndGet();
+			lock = enter.get(index);
+			synchronized (lock) {
+				lock.notify();
+			}
 
 			//  Write data
 			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.addData(task.index(), task.data()));
 
 			//  Secure critical area
-			enter.get(index).acquire();
+			//  Acquire
+			lock = enter.get(index);
+			if (enterAllowed.get(index).getAndDecrement() < 1) {
+				synchronized (lock) {
+					lock.wait();
+				}
+			}
 			writers.set(index, writers.get(index) - 1);
 
 			//  If no writer is waiting, let readers in
@@ -142,7 +196,7 @@ public class WritePriority2Thread extends ReadWriteThread {
 				waitingReaders.set(index, waitingReaders.get(index) - 1);
 
 				//  Acquire monitor and release a random reader
-				Object lock = readerWaitingQueue.get(index);
+				lock = readerWaitingQueue.get(index);
 				synchronized (lock) {
 					lock.notify();
 				}
@@ -152,14 +206,19 @@ public class WritePriority2Thread extends ReadWriteThread {
 				waitingWriters.set(index, waitingWriters.get(index) - 1);
 
 				//  Acquire monitor and release another writer
-				Object lock = writerWaitingQueue.get(index);
+				lock = writerWaitingQueue.get(index);
 				synchronized (lock) {
 					lock.notify();
 				}
 
 				//  When no one is in queue, release entry for any type of thread
 			} else if (waitingReaders.get(index) == 0 && waitingWriters.get(index) == 0) {
-				enter.get(index).release();
+				//  Release
+				enterAllowed.get(index).incrementAndGet();
+				lock = enter.get(index);
+				synchronized (lock) {
+					lock.notify();
+				}
 			}
 		}
 	}
@@ -172,6 +231,7 @@ public class WritePriority2Thread extends ReadWriteThread {
 		waitingWriters = null;
 		readerWaitingQueue = null;
 		writerWaitingQueue = null;
+		enterAllowed = null;
 		enter = null;
 	}
 }
