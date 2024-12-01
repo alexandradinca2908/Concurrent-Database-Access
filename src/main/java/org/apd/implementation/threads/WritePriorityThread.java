@@ -3,11 +3,9 @@ package org.apd.implementation.threads;
 import org.apd.executor.LockType;
 import org.apd.executor.StorageTask;
 import org.apd.implementation.ThreadPool;
-import org.apd.implementation.entrances.Entrance;
 import org.apd.implementation.locks.Lock;
 
 import java.util.ArrayList;
-import java.util.concurrent.Semaphore;
 
 public class WritePriorityThread extends ReadWriteThread {
 	private static ArrayList<Integer> readers = null;
@@ -16,7 +14,7 @@ public class WritePriorityThread extends ReadWriteThread {
 	private static ArrayList<Integer> waitingWriters = null;
 	private static ArrayList<Lock> readerWaitingQueue = null;
 	private static ArrayList<Lock> writerWaitingQueue = null;
-	private static ArrayList<Entrance> enter = null;
+	private static ArrayList<Lock> enter = null;
 	private static LockType lockType;
 
 	public WritePriorityThread(ThreadPool threadPool, LockType lockType) {
@@ -43,9 +41,9 @@ public class WritePriorityThread extends ReadWriteThread {
 			writers.add(0);
 			waitingReaders.add(0);
 			waitingWriters.add(0);
-			readerWaitingQueue.add(Lock.createLock(lockType));
-			writerWaitingQueue.add(Lock.createLock(lockType));
-			enter.add(Entrance.createEntrance(lockType));
+			readerWaitingQueue.add(Lock.createLock(lockType, 0));
+			writerWaitingQueue.add(Lock.createLock(lockType, 0));
+			enter.add(Lock.createLock(lockType, 1));
 		}
 	}
 

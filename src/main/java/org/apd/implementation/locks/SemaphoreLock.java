@@ -5,9 +5,9 @@ import java.util.concurrent.Semaphore;
 public class SemaphoreLock extends Lock {
 	Semaphore semaphore;
 
-	public SemaphoreLock() {
+	public SemaphoreLock(int permits) {
 		super();
-		semaphore = new Semaphore(0);
+		semaphore = new Semaphore(permits);
 	}
 
 	@Override
