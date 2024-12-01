@@ -3,6 +3,7 @@ package org.apd.implementation.threads;
 import org.apd.executor.LockType;
 import org.apd.executor.StorageTask;
 import org.apd.implementation.ThreadPool;
+import org.apd.implementation.entrances.Entrance;
 import org.apd.implementation.locks.Lock;
 
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ public class WritePriorityThread extends ReadWriteThread {
 	private static ArrayList<Integer> waitingWriters = null;
 	private static ArrayList<Lock> readerWaitingQueue = null;
 	private static ArrayList<Lock> writerWaitingQueue = null;
-	private static ArrayList<Semaphore> enter = null;
+	private static ArrayList<Entrance> enter = null;
 	private static LockType lockType;
 
 	public WritePriorityThread(ThreadPool threadPool, LockType lockType) {
@@ -44,7 +45,7 @@ public class WritePriorityThread extends ReadWriteThread {
 			waitingWriters.add(0);
 			readerWaitingQueue.add(Lock.createLock(lockType));
 			writerWaitingQueue.add(Lock.createLock(lockType));
-			enter.add(new Semaphore(1));
+			enter.add(Entrance.createEntrance(lockType));
 		}
 	}
 
@@ -53,12 +54,12 @@ public class WritePriorityThread extends ReadWriteThread {
 		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
 			int index = task.index();
 
-			enter.get(index).acquire();
+			enter.get(index).lock();
 
 			//  Reader waits if writer is in memory area or waits for it
 			if (writers.get(index) > 0 || waitingWriters.get(index) > 0) {
 				waitingReaders.set(index, waitingReaders.get(index) + 1);
-				enter.get(index).release();
+				enter.get(index).unlock();
 
 				//  Acquire monitor and enter waiting state
 				readerWaitingQueue.get(index).lock();
@@ -75,14 +76,14 @@ public class WritePriorityThread extends ReadWriteThread {
 
 				//  No need to wait as thread is the first in queue
 			} else if (waitingReaders.get(index) == 0) {
-				enter.get(index).release();
+				enter.get(index).unlock();
 			}
 
 			//  Read data
 			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.getData(index));
 
 			//  Secure critical area
-			enter.get(index).acquire();
+			enter.get(index).lock();
 			readers.set(index, readers.get(index) - 1);
 
 			//  Allow writer to enter if thread is the last EXECUTING reader
@@ -94,7 +95,7 @@ public class WritePriorityThread extends ReadWriteThread {
 
 				//  Or simply release critical area semaphore for WAITING readers
 			} else if (readers.get(index) > 0 || waitingWriters.get(index) == 0) {
-				enter.get(index).release();
+				enter.get(index).unlock();
 			}
 		}
 	}
@@ -104,12 +105,12 @@ public class WritePriorityThread extends ReadWriteThread {
 		if (task.index() < this.threadPool.sharedDatabase.getSize()) {
 			int index = task.index();
 
-			enter.get(index).acquire();
+			enter.get(index).lock();
 
 			//  Writer waits if readers or writers are in memory area
 			if (readers.get(index) > 0 || writers.get(index) > 0) {
 				waitingWriters.set(index, waitingWriters.get(index) + 1);
-				enter.get(index).release();
+				enter.get(index).unlock();
 
 				//  Acquire monitor and enter waiting state
 				writerWaitingQueue.get(index).lock();
@@ -117,13 +118,13 @@ public class WritePriorityThread extends ReadWriteThread {
 
 			writers.set(index, writers.get(index) + 1);
 
-			enter.get(index).release();
+			enter.get(index).unlock();
 
 			//  Write data
 			this.threadPool.entryResults.add(this.threadPool.sharedDatabase.addData(task.index(), task.data()));
 
 			//  Secure critical area
-			enter.get(index).acquire();
+			enter.get(index).lock();
 			writers.set(index, writers.get(index) - 1);
 
 			//  If no writer is waiting, let readers in
@@ -142,7 +143,7 @@ public class WritePriorityThread extends ReadWriteThread {
 
 				//  When no one is in queue, release entry for any type of thread
 			} else if (waitingReaders.get(index) == 0 && waitingWriters.get(index) == 0) {
-				enter.get(index).release();
+				enter.get(index).unlock();
 			}
 		}
 	}
