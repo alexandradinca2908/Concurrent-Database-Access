@@ -1,0 +1,41 @@
+Concurrent Database Access
+
+Homework side-notes:
+The classes I defined can be found in main/java/org.apd/implementation.
+
+For the application, I defined a ThreadPool and a general thread called ReadWrite thread.
+This abstract class defines the pattern for ReadPriorityThread and WritePriorityThread by
+already implementing the behaviours of a worker thread when taking up on a task.
+
+WritePriorityThread uses a special Lock object based on LockType. For one solution it uses
+semaphores, and for the other it uses monitors, but since the logic is the same, I used abstraction
+to generalize the algorithm.
+
+Homework observations:
+    1. Both solutions greatly boost performance compared to a simple multi-threading program.
+    This is mainly because, despite priority, by having the database split into indexes, it
+    allows multiple threads to access it at the same time, as long as they don't intersect on
+    that same cell.
+    2. When using a Read/Write priority, threads that take up on the lesser priority usually starve.
+    Starving refers to waiting for a long time between context switches because the thread is too low
+    on the priority queue. This happens because prioritised threads monopolize the memory area and
+    only release it when they are all done.
+    3. The tests are made in such a way that checks this kind of starvation. For readers priority,
+    there are about 70-80% writing tasks, and for writers priority, there are about 70-80% reading tasks.
+    There is only one test that splits the tasks evenly, 50-50. The purpose of this "reversed" testing
+    is to see if the threads work simultaneously on multiple indexes, as well as to check how optimized
+    the performance is in the worst case scenarios. Obviously, if the tests had a bigger ratio for the
+    prioritised tasks, the execution time would be quite minimal.
+    4. Readers' priority is the safer choice between the two solutions. This is because readers can work
+    on the exact same memory cell at the same time, since they don't alter data. Therefore, when readers
+    lock areas for each other, they work together. In writers' priority, a writer reserves database cells
+    for other writers, but they still have to wait for that first one to finish modifying. As a conclusion,
+    a writer makes both readers and writers wait, while readers only make writers wait, making the temporal
+    overhead differ between the two.
+    5. Writers' priority with semaphores vs writers' priority with monitors: when it comes to implementation,
+    there aren't big differences. Semaphores tend to be more reliable, since they are machine independent.
+    Monitors are more intuitive, because they mimic the behaviour of mutexes better. Performance-wise, both
+    solutions are almost the same; maybe we could say monitors are faster, but semaphores scale better for
+    larger problems, especially because they can handle more permits.
+    6. In very special (and rare) cases, writers' priority may take longer than normal. If the write sequences
+    in the task queue are too long, and they operate on the same index, the process serializes.
